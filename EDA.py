@@ -262,4 +262,36 @@ def user_user_recs(user_id, m=10):
     return recs[:m].tolist()  # return your recommendations for this user_id
 
 
+def get_top_sorted_users(user_id, df=df, user_item=user_item):
+    '''
+    INPUT:
+    user_id - (int)
+    df - (pandas dataframe) df as defined at the top of the notebook
+    user_item - (pandas dataframe) matrix of users by articles:
+            1's when a user has interacted with an article, 0 otherwise
+
+
+    OUTPUT:
+    neighbors_df - (pandas dataframe) a dataframe with:
+                    neighbor_id - is a neighbor user_id
+                    similarity - measure of the similarity of each user to the provided user_id
+                    num_interactions - the number of articles viewed by the user - if a u
+
+    Other Details - sort the neighbors_df by the similarity and then by number of interactions where
+                    highest of each is higher in the dataframe
+
+    '''
+    neighbors = find_similar_users(user_id)
+    user_arr = user_item.iloc[np.where(user_item.index == user_id)[0][0], :]
+    similarity_score = []
+    for neighbour in neighbors:
+        neighbor_arr = user_item.iloc[np.where(user_item.index == neighbour)[0][0], :]
+        similarity_score.append(np.corrcoef(user_arr, neighbor_arr)[0][1])
+
+    n_interactions = user_item[user_item.index.isin(neighbors)].sum(axis=1).tolist()
+
+    neighbors_df = pd.DataFrame({"neighbor_id": neighbors, "similarity_score": similarity_score, "n_article_interaction": n_interactions})
+    neighbors_df.sort_values(by=['similarity_score', 'n_article_interaction'], axis=0, inplace=True, ascending=[False, False])
+
+    return neighbors_df  # Return the dataframe specified in the doc_string
 
