@@ -292,6 +292,95 @@ def get_top_sorted_users(user_id, df=df, user_item=user_item):
 
     neighbors_df = pd.DataFrame({"neighbor_id": neighbors, "similarity_score": similarity_score, "n_article_interaction": n_interactions})
     neighbors_df.sort_values(by=['similarity_score', 'n_article_interaction'], axis=0, inplace=True, ascending=[False, False])
+    neighbors_df.reset_index(drop = True ,inplace = True)
 
     return neighbors_df  # Return the dataframe specified in the doc_string
+
+def rank_articles(article_ids):
+    '''
+
+    :param article_ids:
+    :return:
+    '''
+    df_temp = df.groupby('article_id')['user_id'].count().sort_values(ascending=False, axis=0)
+    sorted_article_ids = df_temp[df_temp.index.isin(article_ids)].index.tolist()
+    return sorted_article_ids
+
+
+def user_user_recs_part2(user_id, m=10):
+    '''
+    INPUT:
+    user_id - (int) a user id
+    m - (int) the number of recommendations you want for the user
+
+    OUTPUT:
+    recs - (list) a list of recommendations for the user by article id
+    rec_names - (list) a list of recommendations for the user by article title
+
+    Description:
+    Loops through the users based on closeness to the input user_id
+    For each user - finds articles the user hasn't seen before and provides them as recs
+    Does this until m recommendations are found
+
+    Notes:
+    * Choose the users that have the most total article interactions
+    before choosing those with fewer article interactions.
+
+    * Choose articles with the articles with the most total interactions
+    before choosing those with fewer total interactions.
+
+    '''
+    neighbors_df = get_top_sorted_users(1)
+    seen_article_ids, seen_article_names = get_user_articles(user_id)
+    recs = np.array([])
+    for neighbor_id in neighbors_df['neighbor_id']:
+        article_ids, article_names = get_user_articles(neighbor_id)
+        new_recs = np.setdiff1d(article_ids, seen_article_ids, assume_unique=True)
+        new_recs = rank_articles(list(new_recs))
+        recs = np.unique(np.concatenate([new_recs, recs], axis=0))
+
+        if len(recs) > m - 1:
+            break
+
+    return recs[:m].tolist(), get_article_names(recs[:m].tolist())
+
+
+#  Matrix Factorization
+
+# Load the matrix here
+user_item_matrix = pd.read_pickle(data_dir + 'user_item_matrix.p')
+
+# quick look at the matrix
+user_item_matrix.head()
+
+u, s, vt = np.linalg.svd(user_item_matrix, full_matrices=True)
+
+num_latent_feats = np.arange(10, 700 + 10, 20)
+sum_errs = []
+
+for k in num_latent_feats:
+    # restructure with k latent features
+    s_new, u_new, vt_new = np.diag(s[:k]), u[:, :k], vt[:k, :]
+
+    # take dot product
+    user_item_est = np.around(np.dot(np.dot(u_new, s_new), vt_new))
+
+    # compute error for each prediction to actual value
+    diffs = np.subtract(user_item_matrix, user_item_est)
+
+    # total errors and keep track of them
+    err = np.sum(np.sum(np.abs(diffs)))
+    sum_errs.append(err)
+
+plt.plot(num_latent_feats, 1 - np.array(sum_errs) / df.shape[0]);
+plt.xlabel('Number of Latent Features');
+plt.ylabel('Accuracy');
+plt.title('Accuracy vs. Number of Latent Features');
+
+
+
+
+
+
+
 
