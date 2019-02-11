@@ -144,7 +144,9 @@ def create_user_item_matrix(df):
     Return a matrix with user ids as rows and article ids on the columns with 1 values where a user interacted with
     an article and a 0 otherwise
     '''
-    df['values'] = 1
+
+    df.insert(3, 'values', 1)
+
     user_item = df.groupby(['user_id', 'article_id'])['values'].max().unstack().fillna(0)
 
     return user_item  # return the user_item matrix
@@ -377,10 +379,77 @@ plt.xlabel('Number of Latent Features');
 plt.ylabel('Accuracy');
 plt.title('Accuracy vs. Number of Latent Features');
 
+df.drop('values', axis=1, inplace = True)
+df_train = df.head(40000)
+df_test = df.tail(5993)
+
+def create_test_and_train_user_item(df_train, df_test):
+    '''
+    INPUT:
+    df_train - training dataframe
+    df_test - test dataframe
+
+    OUTPUT:
+    user_item_train - a user-item matrix of the training dataframe
+                      (unique users for each row and unique articles for each column)
+    user_item_test - a user-item matrix of the testing dataframe
+                    (unique users for each row and unique articles for each column)
+    test_idx - all of the test user ids
+    test_arts - all of the test article ids
+
+    '''
+    user_item_train = create_user_item_matrix(df_train)
+    user_item_test = create_user_item_matrix(df_test)
+
+    # which rows can we use in test?
+    train_idx = set(user_item_train.index)
+    test_idx = set(user_item_test.index)
+    match_idx = train_idx.intersection(test_idx)
+
+    # which columns can we use in test?
+    train_arts = set(user_item_train.columns)
+    test_arts = set(user_item_test.columns)
+    match_cols = train_arts.intersection(test_arts)
+
+    user_item_test = user_item_test.ix[match_idx, match_cols]
+
+    return user_item_train, user_item_test, test_idx, test_arts
 
 
+user_item_train, user_item_test, test_idx, test_arts = create_test_and_train_user_item(df_train, df_test)
 
+u_train, s_train, vt_train = np.linalg.svd(user_item_train, full_matrices=False)
 
+row_idxs = user_item_train.index.isin(test_idx)
+col_idxs = user_item_train.columns.isin(test_arts)
+u_test = u_train[row_idxs, :]
+vt_test = vt_train[:,col_idxs]
 
+num_latent_feats = np.arange(10,710,20)
+sum_train_errs, sum_test_errs, all_errs = [],[],[]
 
+for k in num_latent_feats:
+    s_train_lat, u_train_lat, vt_train_lat = np.diag(s_train[:k]), u_train[:, :k], vt_train[:k, :]
+    u_test_lat, vt_test_lat = u_test[:,:k], vt_test[:k, :]
+
+    user_item_train_preds = np.around(np.dot(np.dot(u_train_lat, s_train_lat), vt_train_lat))
+    user_item_test_preds = np.around(np.dot(u_test_lat, vt_test_lat))
+
+    # Compute error for each prediction to actual value
+    diffs_train = np.subtract(user_item_train, user_item_train_preds)
+    diffs_test = np.subtract(user_item_test, user_item_test_preds)
+
+    # Calculate total errors and keep track of them
+    err_train = np.sum(np.sum(np.abs(diffs_train)))
+    sum_train_errs.append(err_train)
+
+    err_test = np.sum(np.sum(np.abs(diffs_test)))
+    sum_test_errs.append(err_test)
+
+plt.plot(num_latent_feats, 1 - np.array(sum_train_errs)/(user_item_train.shape[0]* user_item_train.shape[1]), label='Train');
+plt.plot(num_latent_feats, 1 - np.array(sum_test_errs)/(user_item_test.shape[0]* user_item_test.shape[1]), label='Test');
+plt.xlabel('Number of Latent Features');
+plt.ylabel('Accuracy');
+plt.title('Accuracy vs. Number of Latent Features');
+plt.legend();
 
